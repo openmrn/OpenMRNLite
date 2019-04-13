@@ -36,11 +36,15 @@
 #define _UTILS_SOCKET_CLIENT_HXX_
 
 /// @todo(balazs.racz) remove this by moving all calls to usleep to the .cxx file.
+#ifndef _DEFAULT_SOURCE
 #define _DEFAULT_SOURCE
+#endif
 
 #include <functional>
 #include <netdb.h>
+#ifndef ESP32 // this doesn't exist on the ESP32 with LWiP
 #include <arpa/inet.h>
+#endif
 #include <fcntl.h>
 #include <ifaddrs.h>
 

@@ -74,6 +74,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <unistd.h>
 
 /// Defines a GPIO output pin. Writes to this structure will change the output
 /// level of the pin. Reads will return the pin's current level.
@@ -208,7 +209,7 @@ public:
         }
     }
     /// @return the static Gpio instance.
-    static const Gpio *instance()
+    static constexpr const Gpio *instance()
     {
         return GpioWrapper<GpioOutputPin<Base,SAFE_VALUE,INVERT>>::instance();
     }
