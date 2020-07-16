@@ -45,6 +45,8 @@
 #include <inttypes.h>
 #include "os/os.h"
 
+/// Loglevel that is always printed.
+static const int ALWAYS = -1;
 /// Loglevel that kills the current process.
 static const int FATAL = 0;
 /// Loglevel that is always printed, reporting an error.
@@ -123,6 +125,8 @@ extern os_mutex_t g_log_mutex;
 
 #if defined(__linux__) || defined(__MACH__)
 extern char logbuffer[4096];
+#elif defined(ESP32)
+extern char logbuffer[1024];
 #else
 /// Temporary buffer to sprintf() the log lines into.
 extern char logbuffer[256];

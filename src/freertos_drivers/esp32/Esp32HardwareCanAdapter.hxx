@@ -153,11 +153,11 @@ private:
 
     /// Priority to use for the rx_task. This needs to be higher than the
     /// tx_task and lower than @ref OPENMRN_TASK_PRIORITY.
-    static constexpr UBaseType_t RX_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO - 1;
+    static constexpr UBaseType_t RX_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO - 2;
 
     /// Priority to use for the tx_task. This should be lower than
     /// @ref RX_TASK_PRIORITY and @ref OPENMRN_TASK_PRIORITY.
-    static constexpr UBaseType_t TX_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO - 2;
+    static constexpr UBaseType_t TX_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO - 3;
 
     /// Background task that takes care of the conversion of the @ref can_frame
     /// provided by the @ref txBuf into an ESP32 can_message_t which can be
@@ -169,16 +169,20 @@ private:
         /// txBuf.
         Esp32HardwareCan *parent = reinterpret_cast<Esp32HardwareCan *>(can);
 
+#if CONFIG_TASK_WDT
         // Add this task to the WDT
         esp_task_wdt_add(parent->txTaskHandle_);
+#endif // CONFIG_TASK_WDT
 
         /// Tracks the last time that we displayed the CAN driver status.
         TickType_t next_status_display_tick_count = 0;
 
         while (true)
         {
+#if CONFIG_TASK_WDT
             // Feed the watchdog so it doesn't reset the ESP32
             esp_task_wdt_reset();
+#endif // CONFIG_TASK_WDT
 
             // periodic CAN driver monitoring and reporting, this takes care of
             // bus recovery when the CAN driver disables the bus due to error
@@ -236,7 +240,8 @@ private:
             }
 
             /// ESP32 native CAN driver frame
-            can_message_t msg = {0};
+            can_message_t msg;
+            bzero(&msg, sizeof(can_message_t));
 
             msg.flags = CAN_MSG_FLAG_NONE;
             msg.identifier = can_frame->can_id;
@@ -289,16 +294,21 @@ private:
         /// Get handle to our parent Esp32HardwareCan object to access the rxBuf
         Esp32HardwareCan *parent = reinterpret_cast<Esp32HardwareCan *>(can);
 
+#if CONFIG_TASK_WDT
         // Add this task to the WDT
         esp_task_wdt_add(parent->rxTaskHandle_);
+#endif // CONFIG_TASK_WDT
 
         while (true)
         {
+#if CONFIG_TASK_WDT
             // Feed the watchdog so it doesn't reset the ESP32
             esp_task_wdt_reset();
+#endif // CONFIG_TASK_WDT
 
             /// ESP32 native CAN driver frame
-            can_message_t msg = {0};
+            can_message_t msg;
+            bzero(&msg, sizeof(can_message_t));
             if (can_receive(&msg, pdMS_TO_TICKS(250)) != ESP_OK)
             {
                 // native CAN driver did not give us a frame.

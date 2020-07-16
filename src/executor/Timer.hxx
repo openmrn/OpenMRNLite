@@ -120,7 +120,7 @@ private:
     /// List of timers that are scheduled.
     QMember activeTimers_;
     /// 1 if we in the executor's queue.
-    unsigned isPending_ : 1;
+    std::atomic_uint_least8_t isPending_;
 
     friend class TimerTest;
 
@@ -273,6 +273,13 @@ public:
         isCancelled_ = 1;
     }
 
+protected:
+    /** Updates the period, to be used after the next expiration of the timer
+     * in order to restart it. */
+    void update_period(long long period)
+    {
+        period_ = period;
+    }
 
 private:
     friend class ActiveTimers;  // for scheduling an expiring timers

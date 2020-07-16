@@ -46,7 +46,7 @@
 #define EXTERNCEND
 #endif
 
-#if defined (__EMSCRIPTEN__) || defined (__MACH__) || defined(__linux__)
+#if defined (__EMSCRIPTEN__) || defined (__MACH__) || defined(__linux__) || defined(__PIC32MX__)
 #define NEED_SIMPLE_CONST
 #endif
 
@@ -94,9 +94,9 @@
 #else  // native C
 
 #define DECLARE_CONST(name)                                                    \
-    EXTERNC extern void _sym_##name(void);                                     \
+    EXTERNC extern char _sym_##name;                                           \
     EXTERNCEND typedef unsigned char                                           \
-    _do_not_add_declare_and_default_const_to_the_same_file_for_##name;         \
+        _do_not_add_declare_and_default_const_to_the_same_file_for_##name;     \
     static inline ptrdiff_t config_##name(void)                                \
     {                                                                          \
         return (ptrdiff_t)(&_sym_##name);                                      \

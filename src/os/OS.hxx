@@ -262,7 +262,7 @@ public:
     }
 
 
-#if defined (__FreeRTOS__)
+#if OPENMRN_FEATURE_RTOS_FROM_ISR
     /** Post (increment) a semaphore from ISR context.
      * @param woken is the task woken up
      */
@@ -270,7 +270,7 @@ public:
     {
         os_sem_post_from_isr(&handle, woken);
     }
-#endif
+#endif // OPENMRN_FEATURE_RTOS_FROM_ISR
 
 
     /** Wait on (decrement) a semaphore.
@@ -280,7 +280,7 @@ public:
         os_sem_wait(&handle);
     }
 
-#if !(defined(ESP_NONOS) || defined(ARDUINO))
+#if OPENMRN_FEATURE_SEM_TIMEDWAIT
     /** Wait on (decrement) a semaphore with timeout condition.
      * @param timeout timeout in nanoseconds, else OPENMRN_OS_WAIT_FOREVER to wait forever
      * @return 0 upon success, else -1 with errno set to indicate error
@@ -732,7 +732,7 @@ private:
     /** handle to event object */
     EventGroupHandle_t event;
 };
-#elif defined(ARDUINO)
+#elif defined(ARDUINO) && !defined(ESP32)
 
 typedef uint32_t OSEventType;
 
@@ -740,9 +740,9 @@ extern "C" {
 extern unsigned critical_nesting;
 extern uint32_t SystemCoreClock;
 }
-#define cm3_cpu_clock_hz SystemCoreClock
 
-#if !defined(ESP32)
+#define cm3_cpu_clock_hz SystemCoreClock
+#define cpu_clock_hz SystemCoreClock
 
 #define portENTER_CRITICAL()                                                   \
     do                                                                         \
@@ -766,8 +766,6 @@ extern uint32_t SystemCoreClock;
 
 #define configKERNEL_INTERRUPT_PRIORITY (0xa0)
 
-#endif // ESP32
-
-#endif  // freertos
+#endif  // freertos or arduino/esp32
 
 #endif /* _OS_OS_HXX_ */
