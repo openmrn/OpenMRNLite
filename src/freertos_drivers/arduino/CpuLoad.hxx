@@ -31,6 +31,10 @@
  * @date 30 August 2015
  */
 
+#include "openmrn_features.h"
+
+#ifdef OPENMRN_FEATURE_THREAD_FREERTOS
+
 #ifndef _OS_CPULOAD_HXX_
 #define _OS_CPULOAD_HXX_
 
@@ -229,11 +233,12 @@ private:
         auto k = l->new_key();
         if (k < 300)
         {
-            l->set_key_description(k, StringPrintf("irq-%u", k));
+            l->set_key_description(k, StringPrintf("irq-%u", (unsigned)k));
         }
         else if (k & 1)
         {
-            l->set_key_description(k, StringPrintf("ex 0x%x", k & ~1));
+            l->set_key_description(
+                k, StringPrintf("ex 0x%x", (unsigned)(k & ~1)));
         }
         else
         {
@@ -252,3 +257,4 @@ private:
 };
 
 #endif // _OS_CPULOAD_HXX_
+#endif // OPENMRN_FEATURE_THREAD_FREERTOS
