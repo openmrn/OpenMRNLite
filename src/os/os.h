@@ -164,6 +164,11 @@ typedef struct
  */
 extern long long os_get_time_monotonic(void);
 
+/** Get the fake time for a unit test.
+ * @return time in nanoseconds, <= 0 if there is no fake clock.
+ */
+extern long long os_get_fake_time(void);
+
 #ifndef OPENMRN_FEATURE_MUTEX_PTHREAD
 /** @ref os_thread_once states.
  */
@@ -662,7 +667,7 @@ OS_INLINE int os_sem_post(os_sem_t *sem)
  */
 OS_INLINE int os_sem_post_from_isr(os_sem_t *sem, int *woken)
 {
-    portBASE_TYPE local_woken;
+    portBASE_TYPE local_woken = 0;
     xSemaphoreGiveFromISR(*sem, &local_woken);
     *woken |= local_woken;
     return 0;

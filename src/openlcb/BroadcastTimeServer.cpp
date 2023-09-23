@@ -451,7 +451,7 @@ private:
                 expires -= tm->tm_sec ? (tm->tm_sec + 2) : 2;
             }
 
-            long long real_expires;
+            long long real_expires = 0;
             bool result =
                 server_->real_nsec_until_fast_time_abs(expires, &real_expires);
             HASSERT(result);
@@ -543,6 +543,8 @@ private:
         bool start_or_stop = false;
         struct tm tm;
         server_->gmtime_r(&tm);
+        time_t old_seconds = server_->time();
+        time_t new_seconds = 0;
 
         uint16_t suffix = message()->data()->suffix_;
 
@@ -561,6 +563,7 @@ private:
             {
                 tm.tm_hour = BroadcastTimeDefs::event_to_hour(suffix);
                 tm.tm_min = BroadcastTimeDefs::event_to_min(suffix);
+                tm.tm_sec = server_->rate_ < 0 ? 59 : 0;
                 break;
             }
             case BroadcastTimeDefs::SET_DATE:
@@ -576,7 +579,7 @@ private:
             }
             case BroadcastTimeDefs::SET_RATE:
             {
-                    server_->rate_ = BroadcastTimeDefs::event_to_rate(suffix);
+                server_->rate_ = BroadcastTimeDefs::event_to_rate(suffix);
                 break;
             }
             default:
@@ -589,9 +592,10 @@ private:
             AtomicHolder h(server_);
             server_->seconds_ = mktime(&tm);
             server_->timestamp_ = OSTime::get_monotonic();
+            new_seconds = server_->seconds_;
         }
 
-        server_->service_callbacks();
+        server_->service_callbacks(old_seconds, new_seconds);
 
         if (start_or_stop)
         {
@@ -652,7 +656,8 @@ public:
     BroadcastTimeServerAlarm(BroadcastTimeServer *server)
         : BroadcastTimeAlarm(
               server->node(), server,
-              std::bind(&BroadcastTimeServerAlarm::expired_callback, this))
+              std::bind(&BroadcastTimeServerAlarm::expired_callback, this,
+                        std::placeholders::_1))
         , server_(server)
     {
         memset(activeMinutes_, 0, sizeof(activeMinutes_));
@@ -690,10 +695,12 @@ private:
     }
 
     /// callback for when the alarm expires.
-    void expired_callback()
+    /// @param done used to notify we are finished
+    void expired_callback(BarrierNotifiable *done)
     {
         server_->time_->request_time();
         update_notify();
+        done->notify();
     }
 
     /// Called when the clock time has changed.
@@ -726,7 +733,7 @@ private:
         }
         else
         {
-             seconds -= tm->tm_sec ? tm->tm_sec : 60;
+             seconds -= tm->tm_sec + 1;
         }
 
         do
@@ -853,6 +860,23 @@ void BroadcastTimeServer::handle_consumer_identified(
         {
             alarm_->subscribe(hour, min);
         }
+    }
+}
+
+/// Called on another node sending ConsumerRangeIdentified. @param event
+/// stores information about the incoming message. Filled: event id, mask
+/// (!= 1), src_node. Not filled: state.  @param registry_entry gives the
+/// registry entry for which the current handler is being called. @param
+/// done must be notified when the processing is done.
+void BroadcastTimeServer::handle_consumer_range_identified(
+    const EventRegistryEntry &registry_entry, EventReport *event,
+    BarrierNotifiable *done)
+{
+    done->notify();
+    if (event->event == eventBase_ && event->mask == 0xFFFF)
+    {
+        // A new time client was identified, send a time sync.
+        sync_->request_sync();
     }
 }
 

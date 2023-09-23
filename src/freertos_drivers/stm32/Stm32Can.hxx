@@ -43,17 +43,7 @@
 #include "freertos_drivers/common/Can.hxx"
 #endif
 
-#if defined(STM32F072xB) || defined(STM32F091xC) 
-#include "stm32f0xx_hal_can.h"
-#elif defined(STM32F103xB)
-#include "stm32f1xx_hal_can.h"
-#elif defined(STM32F303xC) || defined(STM32F303xE)
-#include "stm32f3xx_hal_can.h"
-#elif defined(STM32F767xx)
-#include "stm32f7xx_hal_can.h"
-#else
-#error Dont know what STM32 chip you have.
-#endif
+#include "stm32f_hal_conf.hxx"
 
 /** Specialization of CAN driver for LPC17xx and LPC40xx CAN.
  */
@@ -75,11 +65,22 @@ public:
     void rx_interrupt_handler();
     /** Handle an interrupt. */
     void tx_interrupt_handler();
+    /** Handle an interrupt. */
+    void sce_interrupt_handler();
 
     /** Instance pointers help us get context from the interrupt handler(s) */
     static Stm32Can *instances[1];
 
 private:
+#ifndef ARDUINO    
+    /// Request an ioctl transaction.
+    /// @param file file reference for this device
+    /// @param key ioctl key
+    /// @param data key data
+    /// @return >= 0 upon success, -errno upon failure
+    int ioctl(File *file, unsigned long int key, unsigned long data) override;
+#endif
+    
     void enable() override; /**< function to enable device */
     void disable() override; /**< function to disable device */
     void tx_msg() override; /**< function to try and transmit a message */
@@ -88,6 +89,8 @@ private:
      *  to keep track of the number of controllers in use.
      */
     static unsigned int intCount;
+
+    uint8_t state_; ///< present bus state
 
     /** Default constructor.
      */

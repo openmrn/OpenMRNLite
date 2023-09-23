@@ -39,6 +39,7 @@
 
 #include "executor/Executor.hxx"
 #include "nmranet_config.h"
+#include "openmrn_features.h"
 #include "openlcb/AliasAllocator.hxx"
 #include "openlcb/ConfigRepresentation.hxx"
 #include "openlcb/ConfigUpdateFlow.hxx"
@@ -54,11 +55,12 @@
 #include "openlcb/SimpleNodeInfo.hxx"
 #include "openlcb/TractionTrain.hxx"
 #include "openlcb/TrainInterface.hxx"
+#include "utils/ActivityLed.hxx"
 #include "utils/GcTcpHub.hxx"
 #include "utils/GridConnectHub.hxx"
 #include "utils/HubDevice.hxx"
 #include "utils/HubDeviceNonBlock.hxx"
-#ifdef __FreeRTOS__
+#ifdef OPENMRN_FEATURE_FD_CAN_DEVICE
 #include "utils/HubDeviceSelect.hxx"
 #endif
 
@@ -151,6 +153,17 @@ public:
     ConfigUpdateService *config_service()
     {
         return &configUpdateFlow_;
+    }
+
+    /// Adds an activiy LED which will be flashed every time a message is sent
+    /// from this node to the network.
+    /// @param gpio LED that will be flashed on for each packet.
+    /// @param period defines in nanosecond the time to spend between updates.
+    void set_tx_activity_led(
+        const Gpio *led, long long period = MSEC_TO_NSEC(33))
+    {
+        auto *al = new ActivityLed(iface(), led, period);
+        iface()->set_tx_hook(std::bind(&ActivityLed::activity, al));
     }
 
     /// Reinitializes the node. Useful to call after the connection has flapped
@@ -316,7 +329,7 @@ public:
         additionalComponents_.emplace_back(port);
     }
 
-#ifdef __FreeRTOS__
+#ifdef OPENMRN_FEATURE_FD_CAN_DEVICE
     /// Adds a CAN bus port with asynchronous driver API.
     ///
     /// @deprecated: most current FreeRTOS drivers use the the select-based
@@ -342,7 +355,7 @@ public:
         auto *port = new HubDeviceSelect<CanHubFlow>(can_hub(), fd, on_error);
         additionalComponents_.emplace_back(port);
     }
-#endif
+#endif // OPENMRN_FEATURE_FD_CAN_DEVICE
 
     /// Adds a gridconnect port to the CAN bus.
     void add_gridconnect_port(const char *path, Notifiable *on_exit = nullptr);
@@ -371,8 +384,21 @@ public:
     {
         /// @TODO (balazs.racz) make this more efficient by rendering to string
         /// only once for all connections.
-        /// @TODO (balazs.racz) do not leak this.
-        new GcTcpHub(can_hub(), port);
+        gcHubServer_.reset(new GcTcpHub(can_hub(), port));
+    }
+
+    /// Retrieve the instance of the GridConnect Hub server, which was started
+    /// with start_tcp_hub_server().
+    /// @return the TCP hub server, or nullptr if no server was ever started.
+    GcTcpHub *get_tcp_hub_server()
+    {
+        return gcHubServer_.get();
+    }
+
+    /// Shuts down the GridConnect Hub server, if previously started.
+    void shutdown_tcp_hub_server()
+    {
+        gcHubServer_.reset(nullptr);
     }
 
     /// Connects to a CAN hub using TCP with the gridconnect protocol.
@@ -412,6 +438,25 @@ public:
     {
         return &static_cast<CanPhysicalIf *>(ifaceHolder_.get())->ifCan_;
     }
+
+    /// Enables stream transport in the interface and in the memory config
+    /// protocol.
+    void add_stream_support();
+
+    /// Helper class to add stream support straight after construction.
+    /// Usage: add following at toplevel in main.cxx
+    /// ```
+    /// SimpleCanStack stack(NODE_ID);
+    /// SimpleCanStack::WithStreamSupport stream_support(&stack);
+    /// ```
+    class WithStreamSupport
+    {
+    public:
+        WithStreamSupport(SimpleCanStackBase *p)
+        {
+            p->add_stream_support();
+        }
+    };
 
 protected:
     /// Helper function for start_stack et al.
@@ -461,6 +506,9 @@ private:
     /// the CAN interface to function. Will be called exactly once by the
     /// constructor of the base class.
     std::unique_ptr<PhysicalIf> create_if(const openlcb::NodeID node_id);
+
+    /// Holds the ownership of the TCP hub server (if one was created).
+    std::unique_ptr<GcTcpHub> gcHubServer_;
 };
 
 class SimpleTcpStackBase : public SimpleStackBase

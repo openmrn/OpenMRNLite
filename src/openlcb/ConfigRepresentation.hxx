@@ -36,7 +36,7 @@
 #define _OPENLCB_CONFIGREPRESENTATION_HXX_
 
 #include "openlcb/ConfigEntry.hxx"
-#include "openlcb/MemoryConfig.hxx"
+#include "openlcb/MemoryConfigDefs.hxx"
 
 namespace openlcb
 {
@@ -100,6 +100,7 @@ public:
     using Name = AtomConfigOptions::Name;
     using Description = AtomConfigOptions::Description;
     using MapValues = AtomConfigOptions::MapValues;
+    using SkipInit = AtomConfigOptions::SkipInit;
     using Min = NumericConfigOptions::Min;
     using Max = NumericConfigOptions::Max;
     using Default = NumericConfigOptions::Default;
@@ -202,8 +203,8 @@ public:
     {                                                                          \
         return entry(openlcb::EntryMarker<LINE>());                            \
     }                                                                          \
-    static constexpr typename decltype(                                        \
-        TYPE::config_renderer())::OptionsType NAME##_options()                 \
+    static constexpr typename decltype(TYPE::config_renderer())::OptionsType   \
+        NAME##_options()                                                       \
     {                                                                          \
         using SelfType = TYPE;                                                 \
         using OptionsType =                                                    \
@@ -217,11 +218,17 @@ public:
         TYPE::config_renderer().render_cdi(s, ##__VA_ARGS__);                  \
     }                                                                          \
     void __attribute__((always_inline))                                        \
-        recursive_handle_events(const openlcb::EntryMarker<LINE> &e,           \
-            const openlcb::EventOffsetCallback &fn)                            \
+    recursive_handle_events(const openlcb::EntryMarker<LINE> &e,               \
+        const openlcb::EventOffsetCallback &fn)                                \
     {                                                                          \
         recursive_handle_events(openlcb::EntryMarker<LINE - 1>(), fn);         \
-        entry(e).handle_events(fn);                                            \
+        if ((!TYPE(0).group_opts(__VA_ARGS__).is_segment() ||                  \
+                TYPE(0).group_opts(__VA_ARGS__).segment() ==                   \
+                    openlcb::MemoryConfigDefs::SPACE_CONFIG) &&                \
+            NAME##_options().skip_init() == 0)                                 \
+        {                                                                      \
+            entry(e).handle_events(fn);                                        \
+        }                                                                      \
     }
 
 /// Helper macro to generate the code needed at the end of a group.
@@ -368,12 +375,12 @@ public:
 /// Defines an empty group with no members, but blocking a certain amount of
 /// space in the rendered configuration.
 ///
-template <unsigned N> class EmptyGroup : public ConfigEntryBase
+template <int N> class EmptyGroup : public ConfigEntryBase
 {
 public:
     using base_type = ConfigEntryBase;
     INHERIT_CONSTEXPR_CONSTRUCTOR(EmptyGroup, base_type)
-    static constexpr unsigned size()
+    static constexpr int size()
     {
         return N;
     }
@@ -448,12 +455,12 @@ CDI_GROUP(
 CDI_GROUP_ENTRY(name, StringConfigEntry<63>, //
     Name("User Name"),                       //
     Description(
-        "This name will appear in network browsers for the current node."));
+        "This name will appear in network browsers for this device."));
 /// User description entry
 CDI_GROUP_ENTRY(description, StringConfigEntry<64>, //
     Name("User Description"),                       //
-    Description("This description will appear in network browsers for the "
-                "current node."));
+    Description("This description will appear in network browsers for "
+                "this device."));
 /// Signals termination of the group.
 CDI_GROUP_END();
 
@@ -502,11 +509,11 @@ template <> inline void render_all_cdi<0>()
  * @param N is a unique integer between 2 and 10 for the invocation.
  */
 #define RENDER_CDI(NS, TYPE, NAME, N)                                          \
-    template <> inline void render_all_cdi<N>()                                \
+    template <> inline void render_all_cdi<2 * N>()                            \
     {                                                                          \
         NS::TYPE def(0);                                                       \
         render_cdi_helper(def, #NS, NAME);                                     \
-        render_all_cdi<N - 1>();                                               \
+        render_all_cdi<2 * N - 1>();                                           \
     }
 
 #endif // _OPENLCB_CONFIGREPRESENTATION_HXX_

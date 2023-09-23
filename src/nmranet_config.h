@@ -122,6 +122,10 @@ DECLARE_CONST(remote_alias_cache_size);
 /** Number of entries in the local alias cache */
 DECLARE_CONST(local_alias_cache_size);
 
+/** Keep this many allocated but unused aliases around. (Currently supported
+ * values are 0 or 1.) */
+DECLARE_CONST(reserve_unused_alias_count);
+
 /** Maximum number of local nodes */
 DECLARE_CONST(local_nodes_count);
 
@@ -132,6 +136,10 @@ DECLARE_CONST(num_datagram_registry_entries);
 /** Number of datagram clients. This is how many datagram send operations can
  * happen concurrently. */
 DECLARE_CONST(num_datagram_clients);
+
+/** Number of stream senders. This is how many stream send operations can
+ * happen concurrently. */
+DECLARE_CONST(num_stream_senders);
 
 /** Maximum number of memory spaces that can be registered for the MemoryConfig
  * datagram handler. */
@@ -146,5 +154,18 @@ DECLARE_CONST(enable_all_memory_space);
  * standard. */
 DECLARE_CONST(node_init_identify);
 
+/** How many CAN frames should the bulk alias allocator be sending at the same
+ * time. */
+DECLARE_CONST(bulk_alias_num_can_frames);
+
+/** Default number of bytes in maximum stream window size for { @ref
+ * StreamReceiver }. */
+DECLARE_CONST(stream_receiver_default_window_size);
+
+/** Stack size for @ref SocketListener threads. */
+DECLARE_CONST(socket_listener_stack_size);
+
+/** Number of sockets to allow for @ref SocketListener backlog. */
+DECLARE_CONST(socket_listener_backlog);
 
 #endif /* _nmranet_config_h_ */

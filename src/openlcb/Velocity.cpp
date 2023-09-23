@@ -48,7 +48,7 @@ namespace openlcb
 uint8_t Velocity::get_dcc_128()
 {
     uint8_t result;
-    uint32_t tmp = (speed() * MPH_FACTOR) + 0.5;
+    uint32_t tmp = mph() + 0.5;
     
     if (tmp == 0)
     {
@@ -84,7 +84,7 @@ void Velocity::set_dcc_128(uint8_t value)
     else
     {
         velocity = (value & 0x07F) - 1;
-        velocity /= MPH_FACTOR;
+        velocity *= MPH_FACTOR;
     }
     
     if ((value & 0x80) == 0)

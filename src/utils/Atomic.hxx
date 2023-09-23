@@ -95,34 +95,12 @@ public:
     /// Locks the specific critical section.
     void lock()
     {
-        // This should really use portENTER_CRITICAL_SAFE() but that is not
-        // available prior to ESP-IDF 3.3 which is not available in the
-        // arduino-esp32 environment generally. The below code is the
-        // implementation of that macro.
-        if (xPortInIsrContext())
-        {
-            portENTER_CRITICAL_ISR(&mux);
-        }
-        else
-        {
-            portENTER_CRITICAL(&mux);
-        }
+        portENTER_CRITICAL_SAFE(&mux);
     }
     /// Unlocks the specific critical section.
     void unlock()
     {
-        // This should really use portEXIT_CRITICAL_SAFE() but that is not
-        // available prior to ESP-IDF 3.3 which is not available in the
-        // arduino-esp32 environment generally. The below code is the
-        // implementation of that macro.
-        if (xPortInIsrContext())
-        {
-            portEXIT_CRITICAL_ISR(&mux);
-        }
-        else
-        {
-            portEXIT_CRITICAL(&mux);
-        }
+        portEXIT_CRITICAL_SAFE(&mux);
     }
 
 private:
@@ -148,9 +126,24 @@ private:
 /// Usage: Declare Atomic as a private base class, add a class member
 /// variable or a global variable of type Atomic. Then use AtomicHolder to
 /// protect the critical sections.
-class Atomic : public OSMutex {
+class Atomic
+{
 public:
-  Atomic() : OSMutex(true) {}
+    void lock()
+    {
+        os_mutex_lock(&mu_);
+    }
+    void unlock()
+    {
+        os_mutex_unlock(&mu_);
+    }
+private:
+    /// Mutex that protects.
+    ///
+    /// NOTE: it is important that this be trivially initialized and the Atomic
+    /// class have no (nontrivial) constructor. This is the only way to avoid
+    /// race conditions and initialization order problems during startup.
+    os_mutex_t mu_ = OS_RECURSIVE_MUTEX_INITIALIZER;
 };
 
 #endif

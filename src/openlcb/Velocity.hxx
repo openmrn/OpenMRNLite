@@ -123,8 +123,9 @@ public:
      * @param value starting value for Velocity as IEEE half precision float.
      */
     Velocity(float16_t value)
-        : velocity(halfp2singles(&velocity, &value, 1))
+        : velocity(0)
     {
+        halfp2singles(&velocity, &value, 1);
     }
 
     /** Copy constructor. */
@@ -486,6 +487,13 @@ private:
     }
 };
 
+/** @returns NAN as speed. */
+inline Velocity nan_to_speed()
+{
+    Velocity s;
+    s.set_wire(0xFFFFU);
+    return s;
+}
 
 }; /* namespace openlcb */
 

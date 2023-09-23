@@ -46,7 +46,15 @@ class BroadcastTimeServerSync;
 class BroadcastTimeServerSet;
 class BroadcastTimeServerAlarm;
 
-/// Implementation of a Broadcast Time Protocol client.
+/// Implementation of a Broadcast Time Protocol server. Note: A Broadcast Time
+/// server must produce all the individual time events for which there is an
+/// identified consumer. In order to guarantee that the server can identify all
+/// of the consumers, it is important to have an Event Identify Global message
+/// sent after the creation of the server object. In order to prevent
+/// unnecessary duplication of Event Identify Global messages, it is left to
+/// the application to send the Event Identify Global message. An application
+/// can use the @ref openlcb::EventIdentifyGlobal object for production of an
+/// Event Identify Global message.
 class BroadcastTimeServer : public BroadcastTime
 {
 public:
@@ -58,6 +66,20 @@ public:
 
     /// Destructor.
     ~BroadcastTimeServer();
+
+    /// Has a time server been detected?
+    /// @return true if a time server has been detected, else false
+    bool is_server_detected() override
+    {
+        return true;
+    }
+
+    /// Test if this is a server.
+    /// @return true if a BroadcastTimeServer, else false
+    bool is_server_self() override
+    {
+        return true;
+    }
 
 #if defined(GTEST)
     void shutdown();
@@ -141,6 +163,16 @@ private:
     void handle_consumer_identified(const EventRegistryEntry &entry,
                                     EventReport *event,
                                     BarrierNotifiable *done) override;
+
+
+    /// Called on another node sending ConsumerRangeIdentified. @param event
+    /// stores information about the incoming message. Filled: event id, mask
+    /// (!= 1), src_node. Not filled: state.  @param registry_entry gives the
+    /// registry entry for which the current handler is being called. @param
+    /// done must be notified when the processing is done.
+    void handle_consumer_range_identified(
+        const EventRegistryEntry &registry_entry, EventReport *event,
+        BarrierNotifiable *done) override;
 
     /// Handle an incoming event report.
     /// @param entry registry entry for the event range

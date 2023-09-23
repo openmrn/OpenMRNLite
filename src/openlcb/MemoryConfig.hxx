@@ -35,12 +35,12 @@
 #ifndef _OPENLCB_MEMORYCONFIG_HXX_
 #define _OPENLCB_MEMORYCONFIG_HXX_
 
-#include "openmrn_features.h"
 #include "openlcb/DatagramDefs.hxx"
 #include "openlcb/DatagramHandlerDefault.hxx"
-#include "openlcb/MemoryConfig.hxx"
-#include "utils/Destructable.hxx"
+#include "openlcb/MemoryConfigDefs.hxx"
+#include "openmrn_features.h"
 #include "utils/ConfigUpdateService.hxx"
+#include "utils/Destructable.hxx"
 
 class Notifiable;
 
@@ -54,228 +54,6 @@ extern void reboot();
 
 namespace openlcb
 {
-
-/// Static constants and helper functions related to the Memory Configuration
-/// Protocol.
-struct MemoryConfigDefs {
-    /** Possible Commands for a configuration datagram.
-     */
-    enum commands
-    {
-        COMMAND_MASK              = 0xFC,
-        COMMAND_FLAG_MASK         = 0x03, /**< mask for special memory space flags */
-        COMMAND_PRESENT_MASK      = 0x01, /**< mask for address space present bit */
-        COMMAND_REPLY_BIT_FOR_RW  = 0x10, /**< This bit is present in REPLY commands for read-write commands. */
-
-        COMMAND_WRITE             = 0x00, /**< command to write data to address space */
-        COMMAND_WRITE_UNDER_MASK  = 0x08, /**< command to write data under mask */
-        COMMAND_WRITE_REPLY       = 0x10, /**< reply to write data to address space */
-        COMMAND_WRITE_FAILED      = 0x18, /**< failed to write data to address space */
-        COMMAND_WRITE_STREAM      = 0x20, /**< command to write data using a stream */
-        COMMAND_WRITE_STREAM_REPLY= 0x30, /**< reply to write data using a stream */
-        COMMAND_WRITE_STREAM_FAILED= 0x38, /**< failed to write data using a stream */
-        COMMAND_READ              = 0x40, /**< command to read data from address space */
-        COMMAND_READ_REPLY        = 0x50, /**< reply to read data from address space */
-        COMMAND_READ_FAILED       = 0x58, /**< failed to read data from address space */
-        COMMAND_READ_STREAM       = 0x60, /**< command to read data using a stream */
-        COMMAND_MAX_FOR_RW        = 0x80, /**< command <= this value have fixed bit arrangement. */
-        COMMAND_OPTIONS           = 0x80,
-        COMMAND_OPTIONS_REPLY     = 0x82,
-        COMMAND_INFORMATION       = 0x84,
-        COMMAND_INFORMATION_REPLY = 0x86,
-        COMMAND_LOCK              = 0x88, /**< lock the configuration space */
-        COMMAND_LOCK_REPLY        = 0x8A, /**< unlock the configuration space */
-        COMMAND_UNIQUE_ID         = 0x8C, /**< ask for a node unique id */
-        COMMAND_UNIQUE_ID_REPLY   = 0x8D, /**< node unique id */
-        COMMAND_UPDATE_COMPLETE   = 0xA8, /**< indicate that a sequence of commands is complete */
-        COMMAND_RESET             = 0xA9, /**< reset node to its power on state */
-        COMMAND_FACTORY_RESET     = 0xAA, /**< reset node to factory defaults */
-        COMMAND_ENTER_BOOTLOADER  = 0xAB, /**< reset node in bootloader mode */
-        COMMAND_FREEZE            = 0xA1, /**< freeze operation of node */
-        COMMAND_UNFREEZE          = 0xA0, /**< unfreeze operation of node */
-
-        COMMAND_PRESENT    = 0x01, /**< address space is present */
-
-        COMMAND_CDI        = 0x03, /**< flags for a CDI space */
-        COMMAND_ALL_MEMORY = 0x02, /**< flags for an all memory space */
-        COMMAND_CONFIG     = 0x01, /**< flags for a config memory space */
-    };
-
-    /** Possible memory spaces.
-     */
-    enum spaces
-    {
-        SPACE_SPECIAL    = 0xFC, /**< offset for the special memory spaces */
-        SPACE_CDI        = 0xFF, /**< CDI space */
-        SPACE_ALL_MEMORY = 0xFE, /**< all memory space */
-        SPACE_CONFIG     = 0xFD, /**< config memory space */
-        SPACE_ACDI_SYS   = 0xFC, /**< read-only ACDI space */
-        SPACE_ACDI_USR   = 0xFB, /**< read-write ACDI space */
-        SPACE_FDI        = 0xFA, /**< read-only for function definition XML */
-        SPACE_FUNCTION   = 0xF9, /**< read-write for function data */
-        SPACE_DCC_CV     = 0xF8, /**< proxy space for DCC functions */
-        SPACE_FIRMWARE   = 0xEF, /**< firmware upgrade space */
-    };
-
-    /** Possible available options.
-     */
-    enum available
-    {
-        AVAIL_WUM   = 0x8000, /**< write under mask supported */
-        AVAIL_UR    = 0x4000, /**< unaligned reads supported */
-        AVAIL_UW    = 0x2000, /**< unaligned writes supported */
-        AVAIL_R0xFC = 0x0800, /**< read from adddress space 0xFC available */
-        AVAIL_R0xFB = 0x0400, /**< read from adddress space 0xFB available */
-        AVAIL_W0xFB = 0x0200, /**< write from adddress space 0xFB available */
-    };
-
-    /** Possible supported write lengths.
-     */
-    enum lengths
-    {
-        LENGTH_1         = 0x80, /**< write length of 1 supported */
-        LENGTH_2         = 0x40, /**< write length of 2 supported */
-        LENGTH_4         = 0x20, /**< write length of 4 supported */
-        LENGTH_63        = 0x10, /**< write length of 64 supported */
-        LENGTH_ARBITRARY = 0x02, /**< arbitrary write of any length supported */
-        LENGTH_STREAM    = 0x01, /**< stream writes supported */
-    };
-
-    /** Possible address space information flags.
-     */
-    enum flags
-    {
-        FLAG_RO   = 0x01, /**< space is read only */
-        FLAG_NZLA = 0x02, /**< space has a nonzero low address */
-    };
-
-    enum errors
-    {
-        ERROR_SPACE_NOT_KNOWN = Defs::ERROR_INVALID_ARGS | 0x0001,
-        ERROR_OUT_OF_BOUNDS = Defs::ERROR_INVALID_ARGS | 0x0002,
-        ERROR_WRITE_TO_RO = Defs::ERROR_INVALID_ARGS | 0x0003,
-    };
-
-    static constexpr unsigned MAX_DATAGRAM_RW_BYTES = 64;
-
-    static bool is_special_space(uint8_t space) {
-        return space > SPACE_SPECIAL;
-    }
-
-    static DatagramPayload write_datagram(
-        uint8_t space, uint32_t offset, const string &data = "")
-    {
-        DatagramPayload p;
-        p.reserve(7 + data.size());
-        p.push_back(DatagramDefs::CONFIGURATION);
-        p.push_back(COMMAND_WRITE);
-        p.push_back(0xff & (offset >> 24));
-        p.push_back(0xff & (offset >> 16));
-        p.push_back(0xff & (offset >> 8));
-        p.push_back(0xff & (offset));
-        if (is_special_space(space)) {
-            p[1] |= space & ~SPACE_SPECIAL;
-        } else {
-            p.push_back(space);
-        }
-        p += data;
-        return p;
-    }
-
-    static DatagramPayload read_datagram(
-        uint8_t space, uint32_t offset, uint8_t length)
-    {
-        DatagramPayload p;
-        p.reserve(7);
-        p.push_back(DatagramDefs::CONFIGURATION);
-        p.push_back(COMMAND_READ);
-        p.push_back(0xff & (offset >> 24));
-        p.push_back(0xff & (offset >> 16));
-        p.push_back(0xff & (offset >> 8));
-        p.push_back(0xff & (offset));
-        if (is_special_space(space)) {
-            p[1] |= space & ~SPACE_SPECIAL;
-        } else {
-            p.push_back(space);
-        }
-        p.push_back(length);
-        return p;
-    }
-
-    /// @return true if the payload has minimum number of bytes you need in a
-    /// read or write datagram message to cover for the necessary fields
-    /// (command, offset, space).
-    /// @param payload is a datagram (read or write, request or response)
-    /// @param extra is the needed bytes after address and space, usually 0 for
-    /// write and 1 for read.
-    static bool payload_min_length_check(
-        const DatagramPayload &payload, unsigned extra)
-    {
-        auto *bytes = payload_bytes(payload);
-        size_t sz = payload.size();
-        if (sz < 6 + extra)
-        {
-            return false;
-        }
-        if (((bytes[1] & COMMAND_FLAG_MASK) == 0) && (sz < 7 + extra))
-        {
-            return false;
-        }
-        return true;
-    }
-
-    /// @return addressed memory space number.
-    /// @param payload is a read or write datagram request or response message
-    static uint8_t get_space(const DatagramPayload &payload)
-    {
-        auto *bytes = payload_bytes(payload);
-        if (bytes[1] & COMMAND_FLAG_MASK)
-        {
-            return COMMAND_MASK + (bytes[1] & COMMAND_FLAG_MASK);
-        }
-        return bytes[6];
-    }
-
-    static unsigned get_payload_offset(const DatagramPayload &payload)
-    {
-        auto *bytes = payload_bytes(payload);
-        if (bytes[1] & COMMAND_FLAG_MASK)
-        {
-            return 6;
-        }
-        else
-        {
-            return 7;
-        }
-    }
-
-    /// @param payload is a datagram read or write request or response
-    /// @return the address field from the datagram
-    static uint32_t get_address(const DatagramPayload &payload)
-    {
-        auto *bytes = payload_bytes(payload);
-        uint32_t a = bytes[2];
-        a <<= 8;
-        a |= bytes[3];
-        a <<= 8;
-        a |= bytes[4];
-        a <<= 8;
-        a |= bytes[5];
-        return a;
-    }
-
-    /// Type casts a DatagramPayload to an array of bytes.
-    /// @param payload datagram
-    /// @return byte array pointing to the same memory
-    static const uint8_t *payload_bytes(const DatagramPayload &payload)
-    {
-        return (uint8_t *)payload.data();
-    }
-
-private:
-    /** Do not instantiate this class. */
-    MemoryConfigDefs();
-};
 
 /// Abstract base class for the address spaces exported via the Memory Config
 /// Protocol.
@@ -547,6 +325,209 @@ public:
     }
 };
 
+class MemoryConfigHandlerBase : public DefaultDatagramHandler
+{
+protected:
+    enum
+    {
+        DATAGRAM_ID = DatagramDefs::CONFIGURATION,
+    };
+
+    MemoryConfigHandlerBase(DatagramService *if_dg)
+        : DefaultDatagramHandler(if_dg)
+        , responseFlow_(nullptr)
+    {
+    }
+
+    typedef MemorySpace::address_t address_t;
+    typedef MemorySpace::errorcode_t errorcode_t;
+    typedef TypedNodeHandlerMap<Node, MemorySpace> Registry;
+
+    Action ok_response_sent() OVERRIDE
+    {
+        if (!response_.empty())
+        {
+            return allocate_and_call(
+                STATE(client_allocated), dg_service()->client_allocator());
+        }
+        else
+        {
+            release();
+            return call_immediately(STATE(cleanup));
+        }
+    }
+
+    Action cleanup()
+    {
+        HASSERT(!message());
+        return exit();
+    }
+
+    Action client_allocated()
+    {
+        responseFlow_ =
+            full_allocation_result(dg_service()->client_allocator());
+        return allocate_and_call(
+            dg_service()->iface()->dispatcher(), STATE(send_response_datagram));
+    }
+
+    Action send_response_datagram()
+    {
+        auto *b = get_allocation_result(dg_service()->iface()->dispatcher());
+        b->set_done(b_.reset(this));
+        b->data()->reset(Defs::MTI_DATAGRAM, message()->data()->dst->node_id(),
+            message()->data()->src, EMPTY_PAYLOAD);
+        b->data()->payload.swap(response_);
+        release(); /// @TODO(balazs.racz) Should this be here or elsewhere?
+        responseFlow_->write_datagram(b);
+        return wait_and_call(STATE(response_flow_complete));
+    }
+
+    Action response_flow_complete()
+    {
+        if (!(responseFlow_->result() & DatagramClient::OPERATION_SUCCESS))
+        {
+            LOG(WARNING,
+                "MemoryConfig: Failed to send response datagram. error code %x",
+                (unsigned)responseFlow_->result());
+        }
+        dg_service()->client_allocator()->typed_insert(responseFlow_);
+        return call_immediately(STATE(cleanup));
+    }
+
+    /// @return true iff we have a custom space
+    bool has_custom_space()
+    {
+        return !(in_bytes()[1] & ~MemoryConfigDefs::COMMAND_MASK);
+    }
+
+    /** Returns the memory space number, or -1 if the incoming datagram is of
+     * incorrect format. Assumes that the incoming datagram length is at least
+     * 2 (i.e., there is a command byte).*/
+    int get_space_number()
+    {
+        const uint8_t *bytes = in_bytes();
+        int len = message()->data()->payload.size();
+        uint8_t cmd = bytes[1];
+        // Handles special memory spaces FD, FE, FF.
+        if (!has_custom_space())
+        {
+            return MemoryConfigDefs::COMMAND_MASK +
+                (cmd & ~MemoryConfigDefs::COMMAND_MASK);
+        }
+        if (len <= 6)
+        {
+            LOG(WARNING,
+                "MemoryConfig: Incoming datagram asked for custom "
+                "space but datagram not long enough. command=0x%02x, "
+                "length=%d. Source {0x%012" PRIx64 ", %03x}",
+                cmd, len, message()->data()->src.id,
+                message()->data()->src.alias);
+            return -1;
+        }
+        return bytes[6];
+    }
+
+    /** Returns the read/write length from byte 6 or 7 of the incoming
+     * datagram, or -1 if the incoming datagram is of incorrect format. */
+    int get_read_length()
+    {
+        const uint8_t *bytes = in_bytes();
+        int len = message()->data()->payload.size();
+        int ofs;
+        uint8_t cmd = bytes[1];
+        // Handles special memory spaces FD, FE, FF.
+        if (!has_custom_space())
+        {
+            ofs = 6;
+        }
+        else
+        {
+            ofs = 7;
+        }
+        if (len <= ofs)
+        {
+            LOG(WARNING,
+                "MemoryConfig::read_len: Incoming datagram not long "
+                "enough. command=0x%02x, length=%d. Source "
+                "{0x%012" PRIx64 ", %03x}",
+                cmd, len, message()->data()->src.id,
+                message()->data()->src.alias);
+            return -1;
+        }
+        return bytes[ofs] & 0x7F; // highest bit is reserved.
+    }
+
+    int get_write_length()
+    {
+        int len = message()->data()->payload.size();
+        return len - (has_custom_space() ? 7 : 6);
+    }
+
+    /** Returns the address from the incoming datagram. Assumes that length >=
+     * 6*/
+    address_t get_address()
+    {
+        const uint8_t *bytes = in_bytes();
+        address_t a = bytes[2];
+        a <<= 8;
+        a |= bytes[3];
+        a <<= 8;
+        a |= bytes[4];
+        a <<= 8;
+        a |= bytes[5];
+        return a;
+    }
+
+    /** Copies the address and memory space information from the incoming
+     * datagram to the outgoing datagram payload. Modifies the low bits of the
+     * response command byte, if needed. Callers are advised to set the base
+     * command value before calling this function. */
+    void set_address_and_space()
+    {
+        uint8_t *resp_bytes = out_bytes();
+        const uint8_t *bytes = in_bytes();
+        memcpy(resp_bytes + 2, bytes + 2, 4);
+        if (has_custom_space())
+        {
+            resp_bytes[6] = bytes[6];
+        }
+        else
+        {
+            resp_bytes[1] |= (bytes[1] & ~MemoryConfigDefs::COMMAND_MASK);
+        }
+    }
+
+    /// Sets the address in the response payload buffer.
+    void set_address(address_t address)
+    {
+        uint8_t *bytes = out_bytes();
+        bytes[5] = address & 0xff;
+        address >>= 8;
+        bytes[4] = address & 0xff;
+        address >>= 8;
+        bytes[3] = address & 0xff;
+        address >>= 8;
+        bytes[2] = address & 0xff;
+    }
+
+    /// @returns the response datagram payload buffer.
+    uint8_t *out_bytes()
+    {
+        return reinterpret_cast<uint8_t *>(&response_[0]);
+    }
+
+    /// @returns the request datagram payload buffer.
+    const uint8_t *in_bytes()
+    {
+        return reinterpret_cast<const uint8_t *>(
+            message()->data()->payload.data());
+    }
+
+    DatagramPayload response_; //< reply payload to send back.
+    DatagramClient *responseFlow_;
+    BarrierNotifiable b_;
+}; // class MemoryConfigHandlerBase
 
 /// Implementation of the Memory Access Configuration Protocol for OpenLCB.
 ///
@@ -554,18 +535,12 @@ public:
 /// node, or for an entire interface. Create your memory spaces using various
 /// children of the class @ref MemorySpace. Register the memory spaces using
 /// @ref registry().
-class MemoryConfigHandler : public DefaultDatagramHandler
+class MemoryConfigHandler : public MemoryConfigHandlerBase
 {
 public:
-    enum
-    {
-        DATAGRAM_ID = DatagramDefs::CONFIGURATION,
-    };
-
     /// node can be nullptr, and then the handler will be registered globally.
     MemoryConfigHandler(DatagramService *if_dg, Node *node, int registry_size)
-        : DefaultDatagramHandler(if_dg)
-        , responseFlow_(nullptr)
+        : MemoryConfigHandlerBase(if_dg)
         , registry_(registry_size)
     {
         dg_service()->registry()->insert(node, DATAGRAM_ID, this);
@@ -575,8 +550,6 @@ public:
     {
         /// @TODO(balazs.racz): unregister *this!
     }
-
-    typedef TypedNodeHandlerMap<Node, MemorySpace> Registry;
 
     Registry *registry()
     {
@@ -633,11 +606,14 @@ public:
         HASSERT(client_ == client);
         client_ = nullptr;
     }
-    
-private:
-    typedef MemorySpace::address_t address_t;
-    typedef MemorySpace::errorcode_t errorcode_t;
 
+    /// This will be called by the constructor of the stream handler plugin.
+    void set_stream_handler(DatagramHandlerFlow *stream_handler)
+    {
+        streamHandler_ = stream_handler;
+    }
+
+private:
     Action entry() OVERRIDE
     {
         response_.clear();
@@ -661,6 +637,15 @@ private:
                  MemoryConfigDefs::COMMAND_WRITE)
         {
             return call_immediately(STATE(handle_write));
+        }
+        else if ((((cmd & MemoryConfigDefs::COMMAND_MASK) ==
+                      MemoryConfigDefs::COMMAND_READ_STREAM) ||
+                     ((cmd & MemoryConfigDefs::COMMAND_MASK) ==
+                         MemoryConfigDefs::COMMAND_WRITE_STREAM)) &&
+            streamHandler_)
+        {
+            streamHandler_->send(transfer_message());
+            return exit();
         }
         switch (cmd)
         {
@@ -704,6 +689,23 @@ private:
 #endif
                 return respond_reject(Defs::ERROR_UNIMPLEMENTED_SUBCMD);
             }
+            case MemoryConfigDefs::COMMAND_FACTORY_RESET:
+            {
+                NodeID id = message()->data()->dst->node_id();
+                if (len < 8 || (data_to_node_id(&bytes[2]) != id))
+                {
+                    return respond_reject(Defs::ERROR_INVALID_ARGS);
+                }
+                uint16_t ret = handle_factory_reset(id);
+                if (!ret)
+                {
+                    return respond_ok(0);
+                }
+                else
+                {
+                    return respond_reject(ret);
+                }
+            }
             case MemoryConfigDefs::COMMAND_OPTIONS:
             {
                 return call_immediately(STATE(handle_options));
@@ -718,6 +720,8 @@ private:
             case MemoryConfigDefs::COMMAND_WRITE_STREAM_FAILED:
             case MemoryConfigDefs::COMMAND_READ_REPLY:
             case MemoryConfigDefs::COMMAND_READ_FAILED:
+            case MemoryConfigDefs::COMMAND_READ_STREAM_REPLY:
+            case MemoryConfigDefs::COMMAND_READ_STREAM_FAILED:
             case MemoryConfigDefs::COMMAND_OPTIONS_REPLY:
             case MemoryConfigDefs::COMMAND_INFORMATION_REPLY:
             case MemoryConfigDefs::COMMAND_LOCK_REPLY:
@@ -728,6 +732,7 @@ private:
                     client_->send(transfer_message());
                     return exit();
                 }
+                LOG(VERBOSE, "memcfg handler reply: no client registered");
             } // fall through to unsupported.
             default:
                 // Unknown/unsupported command, reject datagram.
@@ -735,58 +740,38 @@ private:
         }
     }
 
-    Action ok_response_sent() OVERRIDE
+    /// Used internally by the factory_reset implementation to reboot the
+    /// binary asynchronously.
+    class RebootTimer : public ::Timer
     {
-        if (!response_.empty())
+    public:
+        RebootTimer(Service *s)
+            : ::Timer(s->executor()->active_timers())
+        { }
+
+        long long timeout() override
         {
-            return allocate_and_call(STATE(client_allocated),
-                                     dg_service()->client_allocator());
+#if OPENMRN_FEATURE_REBOOT         
+            reboot();
+#endif            
+            return DELETE;
         }
-        else
-        {
-            release();
-            return call_immediately(STATE(cleanup));
-        }
-    }
+    };
 
-    Action cleanup()
-    {
-        HASSERT(!message());
-        return exit();
-    }
+    /// Invokes the openlcb config handler to do a factory reset. Starts a
+    /// timer to reboot the device after a little time.
+    /// @param target the node ID for which factory reset was invoked.
+    /// @return openlcb error code, 0 on success
+    uint16_t handle_factory_reset(NodeID target);
 
-    Action client_allocated()
-    {
-        responseFlow_ =
-            full_allocation_result(dg_service()->client_allocator());
-        return allocate_and_call(dg_service()->iface()->dispatcher(),
-                                 STATE(send_response_datagram));
-    }
+    /// Weak definition for invoking a factory reset on virtual nodes. The
+    /// default implementation does nothing and return an unimplemented
+    /// error. Applications that use virtual nodes and need to support factory
+    /// reset should reimplement this function.
+    /// @param target the node ID for which factory reset was invoked.
+    /// @return openlcb error code, 0 on success
+    uint16_t __attribute__((noinline)) app_handle_factory_reset(NodeID target);
 
-    Action send_response_datagram()
-    {
-        auto *b =
-            get_allocation_result(dg_service()->iface()->dispatcher());
-        b->set_done(b_.reset(this));
-        b->data()->reset(Defs::MTI_DATAGRAM, message()->data()->dst->node_id(),
-                         message()->data()->src, EMPTY_PAYLOAD);
-        b->data()->payload.swap(response_);
-        release(); /// @TODO(balazs.racz) Should this be here or elsewhere?
-        responseFlow_->write_datagram(b);
-        return wait_and_call(STATE(response_flow_complete));
-    }
-
-    Action response_flow_complete()
-    {
-        if (!(responseFlow_->result() & DatagramClient::OPERATION_SUCCESS))
-        {
-            LOG(WARNING,
-                "MemoryConfig: Failed to send response datagram. error code %x",
-                (unsigned)responseFlow_->result());
-        }
-        dg_service()->client_allocator()->typed_insert(responseFlow_);
-        return call_immediately(STATE(cleanup));
-    }
 
     Action handle_options()
     {
@@ -795,6 +780,10 @@ private:
         response_.push_back(MemoryConfigDefs::COMMAND_OPTIONS_REPLY);
         uint16_t available_commands =
             MemoryConfigDefs::AVAIL_UR | MemoryConfigDefs::AVAIL_UW;
+        if (streamHandler_)
+        {
+            available_commands |= MemoryConfigDefs::AVAIL_SR;
+        }
         // Figure out about ACDI spaces
         MemorySpace* memspace = registry_.lookup(message()->data()->dst, 0xFC);
         if (memspace) {
@@ -985,15 +974,17 @@ private:
             return respond_reject(Defs::ERROR_INVALID_ARGS);
         }
         currentOffset_ = 0;
+        inline_respond_ok(DatagramClient::REPLY_PENDING);
         return call_immediately(STATE(try_write));
     }
 
+    /// Internal loop performing the writes. This state will be invoked
+    /// multiple times if the writes are asynchronous. The OK datagram response
+    /// has been already sent. Eventually when all writes are completed, the
+    /// ok_response_sent state will be invoked. This is correct even if there
+    /// is an error; the error will be returned in the response datagram.
     Action try_write()
     {
-        // TODO(balazs.racz): At this point we will not do a respond_reject
-        // anymore. Technically we should first send off the respond_ok() and
-        // only afterwards perform the actual try_write steps here. Any errors
-        // we encounter will be returned in a datagram in the other direction.
         MemorySpace *space = get_space();
         int write_len = get_write_length();
         address_t address = get_address();
@@ -1024,7 +1015,9 @@ private:
         char c = 0;
         int response_len = 6;
         if (has_custom_space())
+        {
             response_len++;
+        }
         if (error == 0)
         {
             response_.assign(response_len, c);
@@ -1039,39 +1032,7 @@ private:
         }
         out_bytes()[0] = DATAGRAM_ID;
         set_address_and_space();
-        return respond_ok(DatagramClient::REPLY_PENDING);
-    }
-
-    /// @return true iff we have a custom space
-    bool has_custom_space()
-    {
-        return !(in_bytes()[1] & ~MemoryConfigDefs::COMMAND_MASK);
-    }
-
-    /** Returns the memory space number, or -1 if the incoming datagram is of
-     * incorrect format. Assumes that the incoming datagram length is at least
-     * 2 (i.e., there is a command byte).*/
-    int get_space_number()
-    {
-        const uint8_t *bytes = in_bytes();
-        int len = message()->data()->payload.size();
-        uint8_t cmd = bytes[1];
-        // Handles special memory spaces FD, FE, FF.
-        if (!has_custom_space())
-        {
-            return MemoryConfigDefs::COMMAND_MASK +
-                   (cmd & ~MemoryConfigDefs::COMMAND_MASK);
-        }
-        if (len <= 6)
-        {
-            LOG(WARNING, "MemoryConfig: Incoming datagram asked for custom "
-                         "space but datagram not long enough. command=0x%02x, "
-                         "length=%d. Source {0x%012" PRIx64 ", %03x}",
-                cmd, len, message()->data()->src.id,
-                message()->data()->src.alias);
-            return -1;
-        }
-        return bytes[6];
+        return call_immediately(STATE(ok_response_sent));
     }
 
     /** Looks up the memory space for the current datagram. Returns NULL if no
@@ -1100,105 +1061,6 @@ private:
         return space;
     }
 
-    /** Returns the read/write length from byte 6 or 7 of the incoming
-     * datagram, or -1 if the incoming datagram is of incorrect format. */
-    int get_read_length()
-    {
-        const uint8_t *bytes = in_bytes();
-        int len = message()->data()->payload.size();
-        int ofs;
-        uint8_t cmd = bytes[1];
-        // Handles special memory spaces FD, FE, FF.
-        if (!has_custom_space())
-        {
-            ofs = 6;
-        }
-        else
-        {
-            ofs = 7;
-        }
-        if (len <= ofs)
-        {
-            LOG(WARNING, "MemoryConfig::read_len: Incoming datagram not long "
-                         "enough. command=0x%02x, length=%d. Source "
-                         "{0x%012" PRIx64 ", %03x}",
-                cmd, len, message()->data()->src.id,
-                message()->data()->src.alias);
-            return -1;
-        }
-        return bytes[ofs] & 0x7F; // highest bit is reserved.
-    }
-
-    int get_write_length()
-    {
-        int len = message()->data()->payload.size();
-        return len - (has_custom_space() ? 7 : 6);
-    }
-
-    /** Returns the address from the incoming datagram. Assumes that length >=
-     * 6*/
-    address_t get_address()
-    {
-        const uint8_t *bytes = in_bytes();
-        address_t a = bytes[2];
-        a <<= 8;
-        a |= bytes[3];
-        a <<= 8;
-        a |= bytes[4];
-        a <<= 8;
-        a |= bytes[5];
-        return a;
-    }
-
-    /** Copies the address and memory space information from the incoming
-     * datagram to the outgoing datagram payload. Modifies the low bits of the
-     * response command byte, if needed. Callers are advised to set the base
-     * command value before calling this function. */
-    void set_address_and_space()
-    {
-        uint8_t *resp_bytes = out_bytes();
-        const uint8_t *bytes = in_bytes();
-        memcpy(resp_bytes + 2, bytes + 2, 4);
-        if (has_custom_space())
-        {
-            resp_bytes[6] = bytes[6];
-        }
-        else
-        {
-            resp_bytes[1] |= (bytes[1] & ~MemoryConfigDefs::COMMAND_MASK);
-        }
-    }
-
-    /// Sets the address in the response payload buffer.
-    void set_address(address_t address)
-    {
-        uint8_t *bytes = out_bytes();
-        bytes[5] = address & 0xff;
-        address >>= 8;
-        bytes[4] = address & 0xff;
-        address >>= 8;
-        bytes[3] = address & 0xff;
-        address >>= 8;
-        bytes[2] = address & 0xff;
-    }
-
-    /// @returns the response datagram payload buffer.
-    uint8_t *out_bytes()
-    {
-        return reinterpret_cast<uint8_t *>(&response_[0]);
-    }
-
-    /// @returns the request datagram payload buffer.
-    const uint8_t *in_bytes()
-    {
-        return reinterpret_cast<const uint8_t *>(
-            message()->data()->payload.data());
-    }
-
-    DatagramPayload response_; //< reply payload to send back.
-    DatagramClient *responseFlow_;
-    BarrierNotifiable b_;
-
     ///@todo (balazs.racz) implement lock/unlock.
     //NodeID lockNode_; //< Holds the node ID that locked us.
 
@@ -1206,6 +1068,9 @@ private:
     /// If there is a memory config client, we will forward response traffic to
     /// it.
     DatagramHandlerFlow* client_{nullptr};
+    /// If there is a handler for stream requests, we will forward the
+    /// respective traffic to it.
+    DatagramHandlerFlow *streamHandler_ {nullptr};
 
     /** Offset withing the current write/read datagram. This does not include
      * the offset from the incoming datagram. */

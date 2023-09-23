@@ -41,11 +41,6 @@
 #include <net/if.h>
 #include <termios.h> /* tc* functions */
 #endif
-#if defined(__linux__)
-#include "utils/HubDeviceSelect.hxx"
-#include <linux/sockios.h>
-#include <sys/ioctl.h>
-#endif
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -54,8 +49,13 @@
 #include "openlcb/SimpleStack.hxx"
 
 #include "openlcb/EventHandler.hxx"
+#include "openlcb/MemoryConfigStream.hxx"
 #include "openlcb/NodeInitializeFlow.hxx"
 #include "openlcb/SimpleNodeInfo.hxx"
+#include "openlcb/StreamTransport.hxx"
+#include "openmrn_features.h"
+#include "utils/HubDeviceSelect.hxx"
+#include "utils/SocketCan.hxx"
 
 namespace openlcb
 {
@@ -91,28 +91,43 @@ std::unique_ptr<SimpleStackBase::PhysicalIf> SimpleTcpStackBase::create_if(
 
 SimpleCanStack::SimpleCanStack(const openlcb::NodeID node_id)
     : SimpleCanStackBase(node_id)
-    , node_(iface(), node_id)
+    , node_(iface(), node_id, false)
 {
 }
 
 SimpleTcpStack::SimpleTcpStack(const openlcb::NodeID node_id)
     : SimpleTcpStackBase(node_id)
-    , node_(iface(), node_id)
+    , node_(iface(), node_id, false)
 {
+}
+
+void SimpleCanStackBase::add_stream_support()
+{
+    Destructable *t =
+        new StreamTransportCan(if_can(), config_num_stream_senders());
+    additionalComponents_.emplace_back(t);
+    Destructable *mem_stream =
+        new MemoryConfigStreamHandler(memory_config_handler());
+    additionalComponents_.emplace_back(mem_stream);
 }
 
 void SimpleStackBase::start_stack(bool delay_start)
 {
-#if (!defined(ARDUINO)) || defined(ESP32)
+#if OPENMRN_HAVE_POSIX_FD
     // Opens the eeprom file and sends configuration update commands to all
-    // listeners.
-    configUpdateFlow_.open_file(CONFIG_FILENAME);
+    // listeners. We must only call ConfigUpdateFlow::open_file() once and it
+    // may have been done by an earlier call to create_config_file_if_needed()
+    // or check_version_and_factory_reset().
+    if (configUpdateFlow_.get_fd() < 0)
+    {
+        configUpdateFlow_.open_file(CONFIG_FILENAME);
+    }
     configUpdateFlow_.init_flow();
-#endif // NOT ARDUINO, YES ESP32
+#endif // have posix fd
 
     if (!delay_start)
     {
-        start_iface(false);
+        start_after_delay();
     }
 
     // Adds memory spaces.
@@ -138,15 +153,16 @@ void SimpleStackBase::default_start_node()
             node(), MemoryConfigDefs::SPACE_ACDI_SYS, space);
         additionalComponents_.emplace_back(space);
     }
-#if (!defined(ARDUINO)) || defined(ESP32)
+#if OPENMRN_HAVE_POSIX_FD 
+    if (SNIP_DYNAMIC_FILENAME != nullptr)
     {
         auto *space = new FileMemorySpace(
-            SNIP_DYNAMIC_FILENAME, sizeof(SimpleNodeDynamicValues));
+            configUpdateFlow_.get_fd(), sizeof(SimpleNodeDynamicValues));
         memoryConfigHandler_.registry()->insert(
             node(), MemoryConfigDefs::SPACE_ACDI_USR, space);
         additionalComponents_.emplace_back(space);
     }
-#endif // NOT ARDUINO, YES ESP32
+#endif // OPENMRN_HAVE_POSIX_FD
     size_t cdi_size = strlen(CDI_DATA);
     if (cdi_size > 0)
     {
@@ -156,15 +172,16 @@ void SimpleStackBase::default_start_node()
             node(), MemoryConfigDefs::SPACE_CDI, space);
         additionalComponents_.emplace_back(space);
     }
-#if (!defined(ARDUINO)) || defined(ESP32)
+#if OPENMRN_HAVE_POSIX_FD
     if (CONFIG_FILENAME != nullptr)
     {
-        auto *space = new FileMemorySpace(CONFIG_FILENAME, CONFIG_FILE_SIZE);
+        auto *space =
+            new FileMemorySpace(configUpdateFlow_.get_fd(), CONFIG_FILE_SIZE);
         memory_config_handler()->registry()->insert(
             node(), openlcb::MemoryConfigDefs::SPACE_CONFIG, space);
         additionalComponents_.emplace_back(space);
     }
-#endif // NOT ARDUINO, YES ESP32
+#endif // OPENMRN_HAVE_POSIX_FD
 }
 
 SimpleTrainCanStack::SimpleTrainCanStack(
@@ -188,6 +205,12 @@ void SimpleTrainCanStack::start_node()
 void SimpleStackBase::start_after_delay()
 {
     start_iface(false);
+    for (Node *node = iface()->first_local_node();
+         node != nullptr;
+         node = iface()->next_local_node(node->node_id()))
+    {
+        node->initialize();
+    }
 }
 
 void SimpleTcpStackBase::start_iface(bool restart)
@@ -201,16 +224,6 @@ void SimpleCanStackBase::start_iface(bool restart)
         if_can()->alias_allocator()->reinit_seed();
         if_can()->local_aliases()->clear();
         if_can()->remote_aliases()->clear();
-        // Deletes all reserved aliases from the queue.
-        while (!if_can()->alias_allocator()->reserved_aliases()->empty())
-        {
-            Buffer<AliasInfo> *a = static_cast<Buffer<AliasInfo> *>(
-                if_can()->alias_allocator()->reserved_aliases()->next().item);
-            if (a)
-            {
-                a->unref();
-            }
-        }
     }
 
     // Bootstraps the fresh alias allocation process.
@@ -232,6 +245,7 @@ int SimpleStackBase::create_config_file_if_needed(const InternalConfigData &cfg,
     uint16_t expected_version, unsigned file_size)
 {
     HASSERT(CONFIG_FILENAME);
+    HASSERT(configUpdateFlow_.get_fd() < 0);
     struct stat statbuf;
     bool reset = false;
     bool extend = false;
@@ -330,7 +344,12 @@ int SimpleStackBase::check_version_and_factory_reset(
     const InternalConfigData &cfg, uint16_t expected_version, bool force)
 {
     HASSERT(CONFIG_FILENAME);
-    int fd = configUpdateFlow_.open_file(CONFIG_FILENAME);
+    int fd = configUpdateFlow_.get_fd();
+    if (fd < 0)
+    {
+        fd = configUpdateFlow_.open_file(CONFIG_FILENAME);
+    }
+
     if (cfg.version().read(fd) != expected_version)
     {
         /// @todo (balazs.racz): We need to clear the eeprom. Best would be if
@@ -418,35 +437,12 @@ void SimpleCanStackBase::add_gridconnect_tty(
 void SimpleCanStackBase::add_socketcan_port_select(
     const char *device, int loopback)
 {
-    int s;
-    struct sockaddr_can addr;
-    struct ifreq ifr;
-
-    s = socket(PF_CAN, SOCK_RAW, CAN_RAW);
-
-    // Set the blocking limit to the minimum allowed, typically 1024 in Linux
-    int sndbuf = 0;
-    setsockopt(s, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
-
-    // turn on/off loopback
-    setsockopt(s, SOL_CAN_RAW, CAN_RAW_LOOPBACK, &loopback, sizeof(loopback));
-
-    // setup error notifications
-    can_err_mask_t err_mask = CAN_ERR_TX_TIMEOUT | CAN_ERR_LOSTARB |
-        CAN_ERR_CRTL | CAN_ERR_PROT | CAN_ERR_TRX | CAN_ERR_ACK |
-        CAN_ERR_BUSOFF | CAN_ERR_BUSERROR | CAN_ERR_RESTARTED;
-    setsockopt(s, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &err_mask, sizeof(err_mask));
-    strcpy(ifr.ifr_name, device);
-
-    ::ioctl(s, SIOCGIFINDEX, &ifr);
-
-    addr.can_family = AF_CAN;
-    addr.can_ifindex = ifr.ifr_ifindex;
-
-    bind(s, (struct sockaddr *)&addr, sizeof(addr));
-
-    auto *port = new HubDeviceSelect<CanHubFlow>(can_hub(), s);
-    additionalComponents_.emplace_back(port);
+    int s = socketcan_open(device, loopback);
+    if (s >= 0)
+    {
+        auto *port = new HubDeviceSelect<CanHubFlow>(can_hub(), s);
+        additionalComponents_.emplace_back(port);
+    }
 }
 #endif
 extern Pool *const __attribute__((__weak__)) g_incoming_datagram_allocator =

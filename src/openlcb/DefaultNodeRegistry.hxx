@@ -1,5 +1,5 @@
 /** \copyright
- * Copyright (c) 2013, Balazs Racz
+ * Copyright (c) 2020, Balazs Racz
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,50 +24,55 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * \file EventHandlerMock.hxx
+ * \file DefaultNodeRegistry.hxx
  *
- * Helper utilities for testing event handlers.
- *
- * This file must only ever be included in unittests.
+ * Default implementations for data structures keyed by virtual nodes.
  *
  * @author Balazs Racz
- * @date 7 December 2013
+ * @date 12 Sep 2020
  */
 
-#ifndef _OPENLCB_EVENTHANDLERMOCK_HXX_
-#define _OPENLCB_EVENTHANDLERMOCK_HXX_
+#ifndef _OPENLCB_DEFAULTNODEREGISTRY_HXX_
+#define _OPENLCB_DEFAULTNODEREGISTRY_HXX_
 
-#include "gmock/gmock.h"
-#include "openlcb/EventHandler.hxx"
+#include <set>
 
-namespace openlcb {
+#include "openlcb/NodeRegistry.hxx"
 
-/// Test handler for receiving incoming event related messages via the
-/// EventService. Incoming messages need GoogleMock expectations.
-class MockEventHandler : public EventHandler
+namespace openlcb
+{
+
+class Node;
+
+class DefaultNodeRegistry : public NodeRegistry
 {
 public:
-/// Proxies an event handler function to a gmock function.
-///
-/// @param FN name of the function to proxy.
-#define DEFPROXYFN(FN)                                                         \
-    MOCK_METHOD3(FN, void(const EventRegistryEntry &, EventReport *event,      \
-                          BarrierNotifiable *done))
+    /// Adds a node to the list of registered nodes.
+    /// @param node a virtual node.
+    void register_node(openlcb::Node *node) override
+    {
+        nodes_.insert(node);
+    }
 
-    DEFPROXYFN(handle_event_report);
-    DEFPROXYFN(handle_consumer_identified);
-    DEFPROXYFN(handle_consumer_range_identified);
-    DEFPROXYFN(handle_producer_identified);
-    DEFPROXYFN(handle_producer_range_identified);
-    DEFPROXYFN(handle_identify_global);
-    DEFPROXYFN(handle_identify_consumer);
-    DEFPROXYFN(handle_identify_producer);
+    /// Removes a node from the list of registered nodes.
+    /// @param node a virtual node.
+    void unregister_node(openlcb::Node *node) override
+    {
+        nodes_.erase(node);
+    }
 
-#undef DEFPROXYFN
+    /// Checks if a node is registered.
+    /// @param node a virtual node.
+    /// @return true if this node has been registered.
+    bool is_node_registered(openlcb::Node *node) override
+    {
+        return nodes_.find(node) != nodes_.end();
+    }
+
+private:
+    std::set<Node *> nodes_;
 };
 
-}  // namespace openlcb
+} // namespace openlcb
 
-#endif // _OPENLCB_EVENTHANDLERMOCK_HXX_
-
-
+#endif // _OPENLCB_DEFAULTNODEREGISTRY_HXX_

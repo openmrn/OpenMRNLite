@@ -1,9 +1,9 @@
 /** \copyright
- * Copyright (c) 2015, Balazs Racz
+ * Copyright (c) 2021, Mike Dunston
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
+ * modification, are  permitted provided that the following conditions are met:
  *
  *  - Redistributions of source code must retain the above copyright notice,
  *    this list of conditions and the following disclaimer.
@@ -24,26 +24,30 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * \file PacketFlowInterface.hxx
+ * \file Esp32Ledc.cxx
  *
- * Shared declarations for sending DCC packets.
+ * ESP-IDF LEDC adapter that exposes a PWM interface.
  *
- * @author Balazs Racz
- * @date 16 May 2015
+ * @author Mike Dunston
+ * @date 1 June 2021
  */
 
-#ifndef _DCC_PACKETFLOWINTERFACE_HXX_
-#define _DCC_PACKETFLOWINTERFACE_HXX_
+// Ensure we only compile this code for the ESP32 family of MCUs.
+#if defined(ESP32)
 
-#include "executor/StateFlow.hxx"
-#include "dcc/Packet.hxx"
+#include <esp_idf_version.h>
 
-namespace dcc {
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
 
-/// Interface for flows and ports receiving a sequence of DCC (track) packets.
-typedef FlowInterface<Buffer<dcc::Packet>> PacketFlowInterface;
+#include "Esp32Ledc.hxx"
 
-}  // namespace dcc
+namespace openmrn_arduino
+{
 
+pthread_once_t Esp32Ledc::ledcFadeOnce_ = PTHREAD_ONCE_INIT;
 
-#endif
+} // namespace openmrn_arduino
+
+#endif // IDF v4.3+
+
+#endif // ESP32

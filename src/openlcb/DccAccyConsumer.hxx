@@ -36,23 +36,22 @@
 #ifndef _OPENLCB_DCCACCYCONSUMER_HXX_
 #define _OPENLCB_DCCACCYCONSUMER_HXX_
 
-#include "openlcb/TractionDefs.hxx"
+#include "dcc/TrackIf.hxx"
 #include "openlcb/EventHandlerTemplates.hxx"
-#include "dcc/PacketFlowInterface.hxx"
+#include "openlcb/TractionDefs.hxx"
 
 namespace openlcb
 {
 
-class DccAccyConsumer : public SimpleEventHandler
+/// Base (generic protocol) implementation of a DCC accessory consumer.
+class DccAccyConsumerBase : public SimpleEventHandler
 {
-public:
+protected:
     /// Constructs a listener for DCC accessory control.
     /// @param node is the virtual node that will be listening for events and
     /// responding to Identify messages.
-    /// @param track is the interface through which we will be writing DCC
-    /// accessory packets.
-    DccAccyConsumer(Node *node, dcc::PacketFlowInterface* track)
-        : node_(node), track_(track)
+    DccAccyConsumerBase(Node *node)
+        : node_(node)
     {
         EventRegistry::instance()->register_handler(
             EventRegistryEntry(
@@ -66,7 +65,8 @@ public:
         memset(isStateKnown_, 0, sizeof(isStateKnown_));
     }
 
-    ~DccAccyConsumer()
+    /// Destructor.
+    ~DccAccyConsumerBase()
     {
         EventRegistry::instance()->unregister_handler(this);
     }
@@ -110,11 +110,7 @@ public:
             lastSetState_[eventOfs_] &= ~m;
         }
 
-        dcc::PacketFlowInterface::message_type *pkt;
-        mainBufferPool->alloc(&pkt);
-        pkt->data()->add_dcc_basic_accessory(dccAddress_, onOff_);
-        pkt->data()->packet_header.rept_count = 3;
-        track_->send(pkt);
+        send_accy_command();
     }
 
     void handle_identify_consumer(const EventRegistryEntry &entry,
@@ -155,7 +151,9 @@ public:
             done->new_child());
     }
 
-private:
+    /// Send the actual accessory command.
+    virtual void send_accy_command() = 0;
+
     /// Parses an event into an openlcb accessory offset.
     /// @return true if the event is in the accessory range, false if this
     /// event can be ignored.
@@ -215,8 +213,41 @@ private:
 
     /// OpenLCB node to export the consumer on.
     Node *node_;
+};
+
+/// Specialized (DCC protocol) implementation of a DCC accessory consumer.
+class DccAccyConsumer : public DccAccyConsumerBase
+{
+public:
+    /// Constructs a listener for DCC accessory control.
+    /// @param node is the virtual node that will be listening for events and
+    /// responding to Identify messages.
+    /// @param track is the interface through which we will be writing DCC
+    /// accessory packets.
+    DccAccyConsumer(Node *node, dcc::TrackIf *track)
+        : DccAccyConsumerBase(node)
+        , track_(track)
+    {
+    }
+
+    /// Destructor.
+    ~DccAccyConsumer()
+    {
+    }
+
+private:
+    /// Send the actual accessory command.
+    void send_accy_command() override
+    {
+        dcc::TrackIf::message_type *pkt;
+        mainBufferPool->alloc(&pkt);
+        pkt->data()->add_dcc_basic_accessory(dccAddress_, onOff_);
+        pkt->data()->packet_header.rept_count = 3;
+        track_->send(pkt);
+    }
+
     /// Track to send DCC packets to.
-    dcc::PacketFlowInterface* track_;
+    dcc::TrackIf *track_;
 };
 
 } // namespace openlcb

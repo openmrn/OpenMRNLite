@@ -43,7 +43,11 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifdef ESP32
+#include "bootloader_hal.h"
+#else
 #include "freertos/bootloader_hal.h"
+#endif
 #include "openlcb/Defs.hxx"
 #include "openlcb/CanDefs.hxx"
 #include "openlcb/DatagramDefs.hxx"
@@ -1041,9 +1045,13 @@ bool bootloader_init() {
 /// Called repeatedly in an infinite loop to run the bootloader.
 ///
 /// @return true if the board has to be rebooted, false if the bootloader
-/// should keep running (i.e. to call again).
+/// should keep running (i.e., to call again).
 bool bootloader_loop()
 {
+#ifdef BOOTLOADER_LOOP_HOOK
+    BOOTLOADER_LOOP_HOOK();
+#endif
+
     {
 #ifdef __linux__
         AtomicHolder h(&g_bootloader_lock);

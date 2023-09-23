@@ -36,6 +36,9 @@
 #define _UTILS_FORMAT_UTILS_HXX_
 
 #include <string>
+#include <string.h>
+
+using std::string;
 
 /** Renders an integer to string, left-justified. @param buffer must be an at
  * @param buffer must be an at least 10 character long array.
@@ -121,18 +124,40 @@ string uint64_to_string_hex(uint64_t value, unsigned padding = 0);
  */
 string int64_to_string_hex(int64_t value, unsigned padding = 0);
 
+/// Converts a (binary) string into a sequence of hex digits.
+/// @param arg input string
+/// @return string twice the length of arg with hex digits representing the
+/// original data.
+string string_to_hex(const string& arg);
+
+/// Converts hex bytes to binary representation.
+///
+/// @param input points to the input hexadecimal string
+/// @param len how many bytes are there
+/// @param output parsed byte data will be appended here
+/// @param ignore_nonhex if true, jumps over all nonhex characters. If false,
+/// stops at the first nonhex character.
+///
+/// @return number of ascii bytes consumed from the input. For example 0 if the
+/// first byte was not hex and ignore_nonhex=false. If the number of hex digits
+/// is not even, there will be data loss.
+///
+size_t hex_to_string(
+    const char *input, size_t len, string *output, bool ignore_nonhex = false);
+
 /// Formats a MAC address to string. Works both for Ethernet addresses as well
 /// as for OpenLCB node IDs.
 ///
 /// @param mac a 6-byte array storing the MAC address. mac[0] will be printed
 /// at the beginning.
-/// @param colons true to print colons, else false to exclude the colon
-/// seperators
+/// @param colons Specifies byte separators. Leave as default (':') to print
+/// colons, an alternate character to use as separator, or set to 0 to exclude
+/// the seperators entirely.
 ///
-/// @return a string containing a colon-separated hexadecimal printout of the
-/// given MAC address.
+/// @return a string containing a hexadecimal printout of the given MAC
+/// address.
 ///
-string mac_to_string(uint8_t mac[6], bool colons = true);
+string mac_to_string(uint8_t mac[6], char colon = ':');
 
 /// Formats an IPv4 address to string.
 ///
@@ -155,6 +180,19 @@ string ipv4_to_string(uint8_t ip[4]);
 inline string ipv4_to_string(uint32_t ip)
 {
     return ipv4_to_string((uint8_t*)&ip);
+}
+
+/// Populates a character array with a C string. Copies the C string,
+/// appropriately truncating if it is too long and filling the remaining space
+/// with zeroes. Ensures that at least one null terminator character is
+/// present.
+/// @param dst a character array of fixed length, declared as char sdata[N]
+/// @param src a C string to fill it with.
+template <unsigned int N>
+inline void str_populate(char (&dst)[N], const char *src)
+{
+    strncpy(dst, src, N - 1);
+    dst[N - 1] = 0;
 }
 
 #endif // _UTILS_FORMAT_UTILS_HXX_
