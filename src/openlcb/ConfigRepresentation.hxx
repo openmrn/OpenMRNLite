@@ -100,6 +100,7 @@ public:
     using Name = AtomConfigOptions::Name;
     using Description = AtomConfigOptions::Description;
     using MapValues = AtomConfigOptions::MapValues;
+    using Hints = AtomConfigOptions::Hints;
     using SkipInit = AtomConfigOptions::SkipInit;
     using Min = NumericConfigOptions::Min;
     using Max = NumericConfigOptions::Max;
@@ -109,6 +110,8 @@ public:
     using RepName = GroupConfigOptions::RepName;
     using FixedSize = GroupConfigOptions::FixedSize;
     using Hidden = GroupConfigOptions::Hidden;
+    using LinkRef = GroupConfigOptions::LinkRef;
+    using LinkText = GroupConfigOptions::LinkText;
     using Manufacturer = IdentificationConfigOptions::Manufacturer;
     using Model = IdentificationConfigOptions::Model;
     using HwVersion = IdentificationConfigOptions::HwVersion;
@@ -137,11 +140,18 @@ public:
         {                                                                      \
             return openlcb::GroupBaseEntry(offset_);                           \
         }                                                                      \
+        static constexpr uint32_t __attribute__((always_inline))               \
+        end_offset_from_group(const openlcb::EntryMarker<START_LINE> &)        \
+        {                                                                      \
+            return 0;                                                          \
+        }                                                                      \
         template <typename... Args>                                            \
         static constexpr openlcb::GroupConfigOptions group_opts(Args... args)  \
         {                                                                      \
             return openlcb::GroupConfigOptions(args..., ##ARGS);               \
         }                                                                      \
+        static constexpr bool GROUP_IS_CDI =                                   \
+            openlcb::GroupConfigOptions(ARGS).is_cdi();                        \
         static constexpr unsigned size()                                       \
         {                                                                      \
             return GroupName(0).end_offset();                                  \
@@ -158,6 +168,12 @@ public:
                 entry(openlcb::EntryMarker<LINE - 1>()).end_offset());         \
         }                                                                      \
         template <int LINE>                                                    \
+        static constexpr uint32_t __attribute__((always_inline))               \
+        end_offset_from_group(const openlcb::EntryMarker<LINE> &)              \
+        {                                                                      \
+            return end_offset_from_group(openlcb::EntryMarker<LINE - 1>());    \
+        }                                                                      \
+        template <int LINE>                                                    \
         static void render_content_cdi(                                        \
             const openlcb::EntryMarker<LINE> &, std::string *s)                \
         {                                                                      \
@@ -165,8 +181,7 @@ public:
         }                                                                      \
         static void render_content_cdi(                                        \
             const openlcb::EntryMarker<START_LINE> &, std::string *s)          \
-        {                                                                      \
-        }                                                                      \
+        { }                                                                    \
         template <int LINE>                                                    \
         void __attribute__((always_inline))                                    \
             recursive_handle_events(const openlcb::EntryMarker<LINE> &,        \
@@ -190,16 +205,29 @@ public:
 /// the current group.
 
 #define CDI_GROUP_ENTRY_HELPER(LINE, NAME, TYPE, ...)                          \
-    constexpr TYPE entry(const openlcb::EntryMarker<LINE> &) const             \
+    constexpr TYPE __attribute__((always_inline))                              \
+    entry(const openlcb::EntryMarker<LINE> &) const                            \
     {                                                                          \
         static_assert(!group_opts().is_cdi() ||                                \
                 TYPE(0).group_opts(__VA_ARGS__).is_segment(),                  \
             "May only have segments inside CDI.");                             \
-        return TYPE(group_opts().is_cdi()                                      \
+        return TYPE(GROUP_IS_CDI                                               \
                 ? TYPE(0).group_opts(__VA_ARGS__).get_segment_offset()         \
-                : entry(openlcb::EntryMarker<LINE - 1>()).end_offset());       \
+                : offset_ + offset_from_group(openlcb::EntryMarker<LINE>()));  \
     }                                                                          \
-    constexpr TYPE NAME() const                                                \
+    static constexpr uint32_t __attribute__((always_inline))                   \
+    offset_from_group(const openlcb::EntryMarker<LINE> &)                      \
+    {                                                                          \
+        return end_offset_from_group(openlcb::EntryMarker<LINE - 1>()) +       \
+            NAME##_options().offset();                                         \
+    }                                                                          \
+    static constexpr uint32_t __attribute__((always_inline))                   \
+    end_offset_from_group(const openlcb::EntryMarker<LINE> &)                  \
+    {                                                                          \
+        return offset_from_group(openlcb::EntryMarker<LINE>()) +               \
+            TYPE(0).size();                                                    \
+    }                                                                          \
+    constexpr TYPE __attribute__((always_inline)) NAME() const                 \
     {                                                                          \
         return entry(openlcb::EntryMarker<LINE>());                            \
     }                                                                          \

@@ -171,7 +171,7 @@ private:
 /// A BarrierNotifiable allows to create a number of child Notifiable and wait
 /// for all of them to finish. When the last one is finished, the parent done
 /// callback is called.
-class BarrierNotifiable : public Notifiable, private Atomic
+class BarrierNotifiable : public Notifiable, protected Atomic
 {
 public:
     /** Constructs a barrier notifiable that is done. Users should call reset()
@@ -240,7 +240,7 @@ public:
         }
     }
 
-private:
+protected:
     /// How many outstanding notifications we are still waiting for. When 0,
     /// the barrier is not live; when reaches zero, done_ will be called.
     unsigned count_;
@@ -278,7 +278,7 @@ public:
     /// @param n Notifiable to notify when *this goes out of scope. May be null
     /// in which case nothing will be notified.
     ///
-    AutoNotify(Notifiable *n)
+    AutoNotify(Notifiable *n = nullptr)
         : n_(n)
     {
     }
@@ -286,10 +286,19 @@ public:
     /// Destructor. Notifies the stored notifiable.
     ~AutoNotify()
     {
+        reset();
+    }
+
+    /// Performs the notification of the stored notifiable. Can be called
+    /// multiple times, but any later calls do nothing. Stores the new
+    /// notifiable instead.
+    void reset(Notifiable* new_notifiable = nullptr)
+    {
         if (n_)
         {
             n_->notify();
         }
+        n_ = new_notifiable;
     }
 
     /** Transfers the ownership of the notification; it will NOT be called in
@@ -303,6 +312,8 @@ public:
     }
 
 private:
+    DISALLOW_COPY_AND_ASSIGN(AutoNotify);
+    
     /// Stored notifiable to notify upon destruction.
     Notifiable* n_;
 };

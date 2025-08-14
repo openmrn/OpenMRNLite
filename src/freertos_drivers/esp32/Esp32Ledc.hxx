@@ -35,12 +35,13 @@
 #ifndef _DRIVERS_ESP32LEDC_HXX_
 #define _DRIVERS_ESP32LEDC_HXX_
 
-#include "freertos_drivers/arduino/PWM.hxx"
+#include "freertos_drivers/common/PWM.hxx"
 #include "utils/logging.h"
 #include "utils/macros.h"
 #include "utils/Uninitialized.hxx"
 
 #include <driver/ledc.h>
+#include <pthread.h>
 
 namespace openmrn_arduino
 {
@@ -111,7 +112,7 @@ public:
     {
         // Ensure the pin count is valid and within range of usable channels.
         HASSERT(pins_.size() > 0 &&
-                pins_.size() < (LEDC_CHANNEL_MAX - first_channel));
+                pins_.size() <= (LEDC_CHANNEL_MAX - first_channel));
         memset(&timerConfig_, 0, sizeof(ledc_timer_config_t));
         // timerConfig_.speed_mode will be assigned the SOC default mode, which
         // is either HIGH speed or LOW speed depending on the hardware support.
@@ -131,8 +132,9 @@ public:
     /// will generate a runtime failure.
     void hw_init()
     {
-        LOG(INFO,
-            "[Esp32Ledc:%d] Configuring timer (resolution:%d, frequency:%d)",
+        LOG(VERBOSE,
+            "[Esp32Ledc:%d] Configuring timer (resolution:%d, frequency:%"
+            PRIu32 ")",
             timerConfig_.timer_num,
             (1 << (uint8_t)timerConfig_.duty_resolution) - 1,
             timerConfig_.freq_hz);
@@ -144,7 +146,7 @@ public:
 
             ledc_channel_t led_channel =
                 static_cast<ledc_channel_t>(firstChannel_ + count);
-            LOG(INFO, "[Esp32Ledc:%d] Configuring LEDC channel %d on GPIO %d",
+            LOG(VERBOSE, "[Esp32Ledc:%d] Configuring LEDC channel %d on GPIO %d",
                 timerConfig_.timer_num, led_channel, pin);
             ledc_channel_config_t config;
             memset(&config, 0, sizeof(ledc_channel_config_t));
@@ -277,6 +279,7 @@ private:
     {
         ESP_ERROR_CHECK(
             ledc_set_duty(timerConfig_.speed_mode, channel, counts));
+        ESP_ERROR_CHECK(ledc_update_duty(timerConfig_.speed_mode, channel));
     }
 
     /// Gets the duty cycle.

@@ -46,16 +46,10 @@
 #include "utils/macros.h"
 #include "utils/Singleton.hxx"
 
-#include <freertos/event_groups.h>
-#include <esp_idf_version.h>
 #include <esp_event.h>
-#include <esp_wifi_types.h>
-
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
 #include <esp_netif.h>
-#else
-#include <tcpip_adapter.h>
-#endif // IDF v4.1+
+#include <esp_wifi_types.h>
+#include <freertos/event_groups.h>
 
 namespace openlcb
 {
@@ -128,6 +122,17 @@ class Esp32WiFiManager
     , public Singleton<Esp32WiFiManager>
 {
 public:
+    /// OpenLCB connection mode.
+    enum ConnectionMode: uint8_t
+    {
+        /// Uplink connection only
+        CONN_MODE_UPLINK_ONLY = BIT(0),
+        /// Hub connection only
+        CONN_MODE_HUB_ONLY = BIT(1),
+        /// Uplink + hub connection
+        CONN_MODE_UPLINK_PLUS_HUB = CONN_MODE_UPLINK_ONLY | CONN_MODE_HUB_ONLY,
+    };
+
     /// Constructor.
     ///
     /// With this constructor the ESP32 WiFi and MDNS systems will be managed
@@ -174,7 +179,7 @@ public:
                    , openlcb::SimpleStackBase *stack
                    , const WiFiConfiguration &cfg
                    , wifi_mode_t wifi_mode = WIFI_MODE_STA
-                   , uint8_t connection_mode = CONN_MODE_UPLINK_BIT
+                   , ConnectionMode connection_mode = CONN_MODE_UPLINK_ONLY
                    , const char *hostname_prefix = "esp32_"
                    , const char *sntp_server = "pool.ntp.org"
                    , const char *timezone = "UTC0"
@@ -220,7 +225,6 @@ public:
     /// @param fd is the file descriptor used for the configuration settings.
     void factory_reset(int fd) override;
 
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
     /// Processes an event coming from the ESP-IDF default event loop.
     ///
     /// @param ctx context parameter (unused).
@@ -231,22 +235,6 @@ public:
     /// NOTE: This is not intended to be called by the user.
     static void process_idf_event(void *ctx, esp_event_base_t event_base
                                 , int32_t event_id, void *event_data);
-#else
-    /// Processes an ESP-IDF WiFi event based on the event raised by the
-    /// ESP-IDF event loop processor. This should be used when the
-    /// Esp32WiFiManager is not managing the WiFi or MDNS systems so that
-    /// it can react to WiFi events to cleanup or recreate the hub or uplink
-    /// connections as required. When Esp32WiFiManager is managing the WiFi
-    /// connection this method will be called automatically from the
-    /// esp_event_loop. Note that ESP-IDF only supports one callback being
-    /// registered. 
-    ///
-    /// @param ctx context parameter (unused).
-    /// @param event is the system_event_t raised by ESP-IDF.
-    ///
-    /// NOTE: This is not intended to be called by the user.
-    static esp_err_t process_wifi_event(void *ctx, system_event_t *event);
-#endif
 
     /// If called, sets the ESP32 wifi stack to log verbose information to the
     /// console.
@@ -347,6 +335,15 @@ public:
     ///
     /// NOTE: This is not intended to be called by the user.
     void sync_time(time_t now);
+
+    /// Initiates a graceful shutdown. Will trigger a graceful stop of the
+    /// hub and uplink. This is not intended to be reversible, and a system
+    /// reset is expected to follow.
+    void shutdown()
+    {
+        connectionMode_ = CONN_MODE_SHUTDOWN_BIT;
+        wifiStackFlow_.notify();
+    }
 
     /// @return the Executor used by the Esp32WiFiManager.
     ///
@@ -596,18 +593,19 @@ private:
     static constexpr uint8_t MAX_HOSTNAME_LENGTH = 32;
 
     /// Constant used to determine if the Uplink mode should be enabled.
-    static constexpr uint8_t CONN_MODE_UPLINK_BIT = BIT(0);
+    static constexpr uint8_t CONN_MODE_UPLINK_BIT = CONN_MODE_UPLINK_ONLY;
 
     /// Constant used to determine if the Hub mode should be enabled.
-    static constexpr uint8_t CONN_MODE_HUB_BIT = BIT(1);
+    static constexpr uint8_t CONN_MODE_HUB_BIT = CONN_MODE_HUB_ONLY;
 
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
+    /// Constant used to determine if the WiFi should be shutdown.
+    static constexpr uint8_t CONN_MODE_SHUTDOWN_BIT = BIT(7);
+
     /// Network interfaces that are managed by Esp32WiFiManager.
     esp_netif_t *espNetIfaces_[MAX_NETWORK_INTERFACES]
     {
         nullptr, nullptr
     };
-#endif // IDF v4.1+
 
     /// This class provides a proxy for the @ref Notifiable provided by the
     /// @ref SocketClient. This is necessary to ensure the @ref Notifiable does
@@ -700,7 +698,11 @@ private:
 
         /// State which processes a configuration reload or the initial
         /// configuration of the hub and uplink tasks (if either are enabled).
+        /// Also can initiate a shutdown.
         STATE_FLOW_STATE(reload);
+
+        /// State which finalizes the shutdown request.
+        STATE_FLOW_STATE(shutdown);
     };
 
     /// Instance of @ref WiFiStackFlow used for WiFi maintenance.
